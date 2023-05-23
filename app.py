@@ -111,6 +111,8 @@ def post_offer():
             if not text and file_exists(file_path):
                 # Replace with your custom method to extract text from the file
                 text = extract_text_offers(file_path)
+            else:
+                text += '\n' + extract_text_offers(file_path)
 
         # Clean the text
         clean_txt = clean_text(text)
@@ -152,23 +154,49 @@ def post_offer():
 def post_resume():
     if request.method == 'POST':
         # Get form data
-        filepath = request.form['filepath']
-        text = request.form['text']
-        embeds = request.form['embeds']
         geo = request.form['geo']
         profession = request.form['profession']
         industry = request.form['industry']
-        skills = request.form['skills']
+
+        # Check if a file was uploaded
+        if 'file' not in request.files:
+            return 'No file uploaded'
+
+        file = request.files['file']
+
+        # Save the uploaded file
+        if file:
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(
+                app.config['UPLOAD_FOLDER'], 'resumes', filename)
+            file.save(file_path)
+
+            # Extract text from the file
+            text = extract_text_offers(file_path)
+
+        # Clean the text
+        clean_txt = clean_text(text)
+
+        # Create BERT tokens and embeddings
+        embeddings = encode_text(clean_txt, model, tokenizer, adaptive_pool)
+
+        # Extract skills from the cleaned text
+        doc = nlp(clean_txt)
+        annotations = skill_extractor.annotate(doc.text)
+        skills = [skill['doc_node_value'] for skill in annotations['results']['full_matches']] + [skill['doc_node_value'] for skill in annotations['results']['ngram_scored']]
+
+        embeddings_string = ','.join(map(str, embeddings))
+        skills_string = ','.join(map(str, skills))    
 
         # Save resume to the database
         resume = Resume(
-            filepath=filepath,
+            filepath=file_path if file else '',
             text=text,
-            embeds=embeds,
+            embeds=embeddings_string,
             geo=geo,
             profession=profession,
             industry=industry,
-            skills=skills
+            skills=skills_string
         )
         db.session.add(resume)
         db.session.commit()
