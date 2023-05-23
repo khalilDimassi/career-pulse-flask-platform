@@ -1,0 +1,12 @@
+/venv
+/__pycache__
+
+/NLPackage/models
+/NLPackage/__pycache__
+
+/uploads/offers
+/uploads/resumes
+
+skill_db_relax_20.json
+token_dist.json
+
