@@ -23,7 +23,7 @@ from NLPackage.methods import extract_text_offers, clean_text, encode_text
 
 app = Flask(__name__)
 
-# FIX: apply your own mySQL connector credentioals  
+# TODO: apply your own mySQL connector credentioals  
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:2321999@localhost/careerpulsedb'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = r'uploads'
@@ -32,9 +32,7 @@ app.config['UPLOAD_FOLDER'] = r'uploads'
 # Initialize SQLAlchemy
 db = SQLAlchemy(app)
 
-# initialize tesserract model
-tesseract_config = r'--oem 3 --psm 6 --tessdata-dir "D:\PI\careerPulse\NLPackage\models\Tesserract\tessdata"'
-pytesseract.pytesseract.tesseract_cmd = r'"D:\PI\careerPulse\NLPackage\models\Tesserract\tesseract.exe"'
+# initialize tesserract model: install pytesserract from the official git repos and add it to path: RESRTART IS NAICESSARRY
 
 # Load Spacy model
 nlp = spacy.load("en_core_web_lg")
@@ -54,15 +52,13 @@ def file_exists(file_path):
 
 
 # Offer model
-
-
 class Offer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filepath = db.Column(db.String(255))
     text = db.Column(db.Text)
-    embeds = db.Column(db.String(255))
+    embeds = db.Column(db.Text)
     geo = db.Column(db.String(255))
-    type = db.Column(db.String(255))
+    offer_type = db.Column(db.String(255))
     time = db.Column(db.String(255))
     active = db.Column(db.Boolean)
     poster_company = db.Column(db.String(255))
@@ -70,35 +66,29 @@ class Offer(db.Model):
     industry = db.Column(db.String(255))
 
 # Resume model
-
-
 class Resume(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filepath = db.Column(db.String(255))
     text = db.Column(db.Text)
-    embeds = db.Column(db.String(255))
+    embeds = db.Column(db.Text)
     geo = db.Column(db.String(255))
     profession = db.Column(db.String(255))
     industry = db.Column(db.String(255))
     skills = db.Column(db.String(255))
 
 # Home page
-
-
 @app.route('/')
 def home():
     return render_template('home.html')
 
 # Post offer
-
-
 @app.route('/post_offer', methods=['GET', 'POST'])
 def post_offer():
     if request.method == 'POST':
         # Get form data
         text = request.form['text']
         geo = request.form['geo']
-        type = request.form['type']
+        offer_type_v = request.form['type']
         time = request.form['time']
         active = request.form.get('active') == 'on'  # Convert to boolean
         poster_company = request.form['poster_company']
@@ -120,7 +110,7 @@ def post_offer():
             # Extract text from the file
             if not text and file_exists(file_path):
                 # Replace with your custom method to extract text from the file
-                text = extract_text_offers(file_path, tesseract_config)
+                text = extract_text_offers(file_path)
 
         # Clean the text
         clean_txt = clean_text(text)
@@ -130,24 +120,26 @@ def post_offer():
 
         # Extract skills from the cleaned text
         doc = nlp(clean_txt)
-        annotations = skill_extractor.annotate(doc)
-        skills = [skill for skill in annotations['resultat']['full_matches']['doc_node_value']] + [skill for skill in annotations['resultat']['ngram_scored']['doc_node_value']]
+        annotations = skill_extractor.annotate(doc.text)
+        skills = [skill['doc_node_value'] for skill in annotations['results']['full_matches']] + [skill['doc_node_value'] for skill in annotations['results']['ngram_scored']]
 
-        print(skills)
+        embeddings_string = ','.join(map(str, embeddings))
+        skills_string = ','.join(map(str, skills))    
 
         # Save offer to the database
         offer = Offer(
             filepath=file_path if file else '',
             text=text,
-            embeds=embeddings,
+            embeds=embeddings_string,
             geo=geo,
-            type=type,
+            offer_type=offer_type_v,
             time=time,
             active=active,
             poster_company=poster_company,
-            skills=skills,
+            skills=skills_string,
             industry=industry
         )
+
         db.session.add(offer)
         db.session.commit()
 
@@ -156,8 +148,6 @@ def post_offer():
     return render_template('post_offer.html')
 
 # Post resume
-
-
 @app.route('/post_resume', methods=['GET', 'POST'])
 def post_resume():
     if request.method == 'POST':
@@ -188,24 +178,18 @@ def post_resume():
     return render_template('post_resume.html')
 
 # All offers
-
-
 @app.route('/all_offers')
 def all_offers():
     offers = Offer.query.all()
     return render_template('all_offers.html', offers=offers)
 
 # All resumes
-
-
 @app.route('/all_resumes')
 def all_resumes():
     resumes = Resume.query.all()
     return render_template('all_resumes.html', resumes=resumes)
 
 # Dashboard
-
-
 @app.route('/dashboard')
 def dashboard():
     # Add code for dashboard view
